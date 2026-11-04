@@ -4,7 +4,7 @@ import type { Database } from "@/integrations/supabase/types";
 import type { TxRecord } from "./analytics";
 
 function db() {
-  return createClient<Database>(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY, {
+  return createClient<Database>(import.meta.env['VITE_SUPABASE_URL'], import.meta.env['VITE_SUPABASE_PUBLISHABLE_KEY'], {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
@@ -63,7 +63,7 @@ export const getStatus = createServerFn({ method: "GET" }).handler(async () => {
     connected: true,
     error: null as string | null,
     tables: Object.fromEntries(Object.entries(d.tables).map(([k, v]) => [k, num(v)])),
-    totals: { sales_inr: num(d.totals.sales_inr), units_sold: num(d.totals.units_sold), transaction_rows: num(d.totals.transaction_rows) },
+    totals: { sales_inr: num(d.totals['sales_inr']), units_sold: num(d.totals['units_sold']), transaction_rows: num(d.totals['transaction_rows']) },
   };
 });
 
@@ -109,7 +109,7 @@ export const chatAssistant = createServerFn({ method: "POST" })
     return { messages: d.messages.slice(-12).map((m) => ({ role: m.role === "assistant" ? "assistant" : "user", content: String(m.content).slice(0, 4000) })) as Msg[] };
   })
   .handler(async ({ data }) => {
-    const key = process.env.LOVABLE_API_KEY;
+    const key = process.env['LOVABLE_API_KEY'];
     if (!key) return { reply: "The AI assistant is not configured." };
     const rows = await fetchAll();
     const tools = [{
@@ -151,16 +151,16 @@ export const chatAssistant = createServerFn({ method: "POST" })
           if (ev.type === "response.completed") output = ev.response?.output ?? [];
         } catch { /* ignore keepalives */ }
       }
-      const calls = output.filter((o) => o.type === "function_call");
+      const calls = output.filter((o) => o['type'] === "function_call");
       if (!calls.length) {
-        const reply = output.filter((o) => o.type === "message").flatMap((o) => o.content ?? []).filter((c: any) => c.type === "output_text").map((c: any) => c.text).join("\n");
+        const reply = output.filter((o) => o['type'] === "message").flatMap((o) => o['content'] ?? []).filter((c: any) => c.type === "output_text").map((c: any) => c.text).join("\n");
         return { reply: reply || "No answer returned." };
       }
       input.push(...output);
       for (const c of calls) {
         let out: unknown;
-        try { out = aggregate(rows, JSON.parse(c.arguments || "{}")); } catch (e) { out = { error: String(e) }; }
-        input.push({ type: "function_call_output", call_id: c.call_id, output: JSON.stringify(out) });
+        try { out = aggregate(rows, JSON.parse(c['arguments'] || "{}")); } catch (e) { out = { error: String(e) }; }
+        input.push({ type: "function_call_output", call_id: c['call_id'], output: JSON.stringify(out) });
       }
     }
     return { reply: "I couldn't complete that analysis — try a more specific question." };
