@@ -114,41 +114,53 @@ export const chatAssistant = createServerFn({ method: "POST" })
     const rows = await fetchAll();
     const tools = [{
       type: "function",
-      function: {
-        name: "query_transactions",
-        description: "Aggregate FY2023-24 FMCG transactions from the database. Returns sales_inr, sales_cr (crores), units, realization (INR/unit), records grouped by a dimension.",
-        parameters: {
-          type: "object",
-          properties: {
-            group_by: { type: "string", enum: DIMS },
-            filters: { type: "object", description: "Exact-match filters keyed by dimension, e.g. {\"quarter\":\"Q2\",\"category\":\"Home Care\"}", additionalProperties: { type: "string" } },
-            top: { type: "number" },
-          },
-          required: ["group_by"],
+      name: "query_transactions",
+      description: "Aggregate FY2023-24 FMCG transactions from the database. Returns sales_inr, sales_cr (crores), units, realization (INR/unit), records grouped by a dimension.",
+      strict: false,
+      parameters: {
+        type: "object",
+        properties: {
+          group_by: { type: "string", enum: DIMS },
+          filters: { type: "object", description: "Exact-match filters keyed by dimension, e.g. {\"quarter\":\"Q2\",\"category\":\"Home Care\"}", additionalProperties: { type: "string" } },
+          top: { type: "number" },
         },
+        required: ["group_by"],
       },
     }];
-    const messages: Array<Record<string, unknown>> = [
-      { role: "system", content: "You are a supply chain and revenue analyst for an Indian FMCG company (fiscal year FY2023-24, April–March, Q1=Apr–Jun). Always ground numbers by calling query_transactions. Use Indian units (₹ Cr, Lakhs). Be concise, use short markdown bullet lists. For forecasts, extrapolate from the monthly trend and say it is an estimate." },
-      ...data.messages,
-    ];
-    for (let step = 0; step < 5; step++) {
-      const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const input: Array<Record<string, unknown>> = data.messages.map((m) => ({ role: m.role, content: m.content }));
+    const instructions = "You are a supply chain and revenue analyst for an Indian FMCG company (fiscal year FY2023-24, April–March, Q1=Apr–Jun). Always ground numbers by calling query_transactions. Use Indian units (₹ Cr, Lakhs). Be concise, use short markdown bullet lists. For forecasts, extrapolate from the monthly trend and say it is an estimate.";
+    let runId: string | undefined;
+    for (let step = 0; step < 6; step++) {
+      const headers: Record<string, string> = { "Lovable-API-Key": key, Authorization: `Bearer ${key}`, "Content-Type": "application/json", "X-Lovable-AIG-SDK": "fetch" };
+      if (runId) headers["X-Lovable-AIG-Run-ID"] = runId;
+      const res = await fetch("https://ai.gateway.lovable.dev/v1/responses", {
         method: "POST",
-        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "google/gemini-3-flash-preview", messages, tools }),
+        headers,
+        body: JSON.stringify({ model: "openai/gpt-6-astra", instructions, input, tools, stream: true, store: false, reasoning: { effort: "low" }, include: ["reasoning.encrypted_content"] }),
       });
+      runId ??= res.headers.get("X-Lovable-AIG-Run-ID") ?? undefined;
       if (res.status === 429) return { reply: "The assistant is busy right now — please try again in a moment." };
       if (res.status === 402) return { reply: "AI credits have run out for this workspace. Add credits to keep using the assistant." };
-      if (!res.ok) return { reply: `Assistant error (${res.status}).` };
-      const json = (await res.json()) as { choices: Array<{ message: { content?: string; tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }> } }> };
-      const msg = json.choices[0].message;
-      if (!msg.tool_calls?.length) return { reply: msg.content ?? "" };
-      messages.push(msg as Record<string, unknown>);
-      for (const tc of msg.tool_calls) {
+      if (!res.ok || !res.body) return { reply: `Assistant error (${res.status}).` };
+      const text = await new Response(res.body).text();
+      let output: Array<Record<string, any>> = [];
+      for (const line of text.split("\n")) {
+        if (!line.startsWith("data:")) continue;
+        try {
+          const ev = JSON.parse(line.slice(5).trim());
+          if (ev.type === "response.completed") output = ev.response?.output ?? [];
+        } catch { /* ignore keepalives */ }
+      }
+      const calls = output.filter((o) => o.type === "function_call");
+      if (!calls.length) {
+        const reply = output.filter((o) => o.type === "message").flatMap((o) => o.content ?? []).filter((c: any) => c.type === "output_text").map((c: any) => c.text).join("\n");
+        return { reply: reply || "No answer returned." };
+      }
+      input.push(...output);
+      for (const c of calls) {
         let out: unknown;
-        try { out = aggregate(rows, JSON.parse(tc.function.arguments || "{}")); } catch (e) { out = { error: String(e) }; }
-        messages.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify(out) });
+        try { out = aggregate(rows, JSON.parse(c.arguments || "{}")); } catch (e) { out = { error: String(e) }; }
+        input.push({ type: "function_call_output", call_id: c.call_id, output: JSON.stringify(out) });
       }
     }
     return { reply: "I couldn't complete that analysis — try a more specific question." };
