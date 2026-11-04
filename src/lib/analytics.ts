@@ -108,7 +108,7 @@ export function comparison(all: TxRecord[], f: Filters, mode: "QoQ" | "MoM") {
   const sel = f.month.length ? f.month : [...new Set(base.map((r) => r.month))];
   const idx = Math.max(...sel.map((m) => MONTHS.indexOf(m)), -1);
   if (idx < 0) return null;
-  return { label: MONTHS[idx].slice(0, 3), prevLabel: idx > 0 ? MONTHS[idx - 1].slice(0, 3) : null, curr: kpis(base.filter((r) => r.month === MONTHS[idx])), prev: idx > 0 ? kpis(base.filter((r) => r.month === MONTHS[idx - 1])) : null };
+  return { label: MONTHS[idx]!.slice(0, 3), prevLabel: idx > 0 ? MONTHS[idx - 1]!.slice(0, 3) : null, curr: kpis(base.filter((r) => r.month === MONTHS[idx])), prev: idx > 0 ? kpis(base.filter((r) => r.month === MONTHS[idx - 1])) : null };
 }
 
 export const REQUIRED_COLUMNS = ["month", "quarter", "units", "sales", "brand", "category", "plant", "distributor"] as const;
