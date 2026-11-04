@@ -122,7 +122,7 @@ export function normaliseUpload(raw: Record<string, unknown>[]): { rows: TxRecor
     month: ["month", "periodmonth"], quarter: ["quarter", "periodquarter"], units: ["units", "unitssold"], sales: ["sales", "salesinr"],
     brand: ["brand"], category: ["category"], plant: ["plant"], distributor: ["distributor"],
   };
-  const first = lower(raw[0]);
+  const first = lower(raw[0] ?? {});
   const pick = (o: Record<string, unknown>, k: string) => { for (const a of alias[k] ?? [k.toLowerCase()]) if (a in o) return o[a]; return undefined; };
   for (const c of REQUIRED_COLUMNS) if (pick(first, c) === undefined) errors.push(`Missing column: ${c}`);
   if (errors.length) return { rows: [], errors };
