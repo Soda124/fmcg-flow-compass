@@ -553,11 +553,11 @@ function Assistant() {
             <div
               key={i}
               className={cn(
-                "whitespace-pre-wrap rounded-xl px-3 py-2 text-sm",
+                "rounded-xl px-3 py-2 text-sm [&_p]:whitespace-pre-wrap",
                 m.role === "user" ? "ml-8 bg-primary text-primary-foreground" : "mr-8 bg-muted",
               )}
             >
-              {m.content}
+              {m.role === "user" ? <p className="whitespace-pre-wrap">{m.content}</p> : <RichText content={m.content} />}
             </div>
           ))}
           {busy && <p className="text-xs text-muted-foreground">Analysing…</p>}
