@@ -431,6 +431,78 @@ export function Dashboard() {
 
 type Msg = { role: "user" | "assistant"; content: string };
 
+/** Renders markdown-lite (bold, bullet/numbered lists, headings, paragraphs) for assistant replies. */
+function RichText({ content }: { content: string }) {
+  const blocks = content.split(/\n{2,}/);
+  return (
+    <>
+      {blocks.map((block, bi) => {
+        const lines = block.split("\n").map((l) => l.trim());
+        const bullets = lines.filter((l) => /^[-*•]\s+/.test(l));
+        const numbered = lines.filter((l) => /^\d+[.)]\s+/.test(l));
+        if (bullets.length && bullets.length === lines.length) {
+          return (
+            <ul key={bi} className="ml-4 list-disc space-y-1">
+              {bullets.map((l, li) => (
+                <li key={li}>
+                  <Inline text={l.replace(/^[-*•]\s+/, "")} />
+                </li>
+              ))}
+            </ul>
+          );
+        }
+        if (numbered.length && numbered.length === lines.length) {
+          return (
+            <ol key={bi} className="ml-4 list-decimal space-y-1">
+              {numbered.map((l, li) => (
+                <li key={li}>
+                  <Inline text={l.replace(/^\d+[.)]\s+/, "")} />
+                </li>
+              ))}
+            </ol>
+          );
+        }
+        if (/^#{1,6}\s+/.test(lines[0])) {
+          return (
+            <p key={bi} className="text-sm font-bold">
+              <Inline text={lines[0].replace(/^#{1,6}\s+/, "")} />
+            </p>
+          );
+        }
+        return (
+          <p key={bi}>
+            {lines.map((l, li) => (
+              <span key={li}>
+                {li > 0 && <br />}
+                <Inline text={l} />
+              </span>
+            ))}
+          </p>
+        );
+      })}
+    </>
+  );
+}
+
+/** Inline markdown: **bold**, `code`. Splits on a marker that cannot appear in the text. */
+function Inline({ text }: { text: string }) {
+  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+  return (
+    <>
+      {parts.map((p, i) => {
+        if (/^\*\*[^*]+\*\*$/.test(p)) return <strong key={i}>{p.slice(2, -2)}</strong>;
+        if (/^`[^`]+`$/.test(p))
+          return (
+            <code key={i} className="rounded bg-muted px-1 font-mono text-[0.85em]">
+              {p.slice(1, -1)}
+            </code>
+          );
+        return <span key={i}>{p}</span>;
+      })}
+    </>
+  );
+}
+
 function Assistant() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState("");
@@ -481,11 +553,11 @@ function Assistant() {
             <div
               key={i}
               className={cn(
-                "whitespace-pre-wrap rounded-xl px-3 py-2 text-sm",
+                "rounded-xl px-3 py-2 text-sm [&_p]:whitespace-pre-wrap",
                 m.role === "user" ? "ml-8 bg-primary text-primary-foreground" : "mr-8 bg-muted",
               )}
             >
-              {m.content}
+              {m.role === "user" ? <p className="whitespace-pre-wrap">{m.content}</p> : <RichText content={m.content} />}
             </div>
           ))}
           {busy && <p className="text-xs text-muted-foreground">Analysing…</p>}
