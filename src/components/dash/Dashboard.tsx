@@ -3,12 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
-import { Bot, Database, Download, Filter, Moon, Send, Sun, Upload, X } from "lucide-react";
+import { Database, Download, Filter, Moon, Sun, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Input } from "@/components/ui/input";
-import { chatAssistant, getAllRecords, getMaster, getStatus } from "@/lib/analytics.functions";
+import { getAllRecords, getMaster, getStatus } from "@/lib/analytics.functions";
 import {
   EMPTY_FILTERS,
   MONTHS,
@@ -26,6 +25,7 @@ import {
 } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import { DeltaPill, MultiSelect, Panel, exportCsv, exportXlsx } from "./shared";
+import { Assistant } from "./Assistant";
 import { IndiaMap } from "./IndiaMap";
 import { Overview } from "./tabs/Overview";
 import { Brands } from "./tabs/Brands";
@@ -426,159 +426,5 @@ export function Dashboard() {
         </Tabs>
       </main>
     </div>
-  );
-}
-
-type Msg = { role: "user" | "assistant"; content: string };
-
-/** Renders markdown-lite (bold, bullet/numbered lists, headings, paragraphs) for assistant replies. */
-function RichText({ content }: { content: string }) {
-  const blocks = content.split(/\n{2,}/);
-  return (
-    <>
-      {blocks.map((block, bi) => {
-        const lines = block.split("\n").map((l) => l.trim());
-        const bullets = lines.filter((l) => /^[-*•]\s+/.test(l));
-        const numbered = lines.filter((l) => /^\d+[.)]\s+/.test(l));
-        if (bullets.length && bullets.length === lines.length) {
-          return (
-            <ul key={bi} className="ml-4 list-disc space-y-1">
-              {bullets.map((l, li) => (
-                <li key={li}>
-                  <Inline text={l.replace(/^[-*•]\s+/, "")} />
-                </li>
-              ))}
-            </ul>
-          );
-        }
-        if (numbered.length && numbered.length === lines.length) {
-          return (
-            <ol key={bi} className="ml-4 list-decimal space-y-1">
-              {numbered.map((l, li) => (
-                <li key={li}>
-                  <Inline text={l.replace(/^\d+[.)]\s+/, "")} />
-                </li>
-              ))}
-            </ol>
-          );
-        }
-        if (/^#{1,6}\s+/.test(lines[0])) {
-          return (
-            <p key={bi} className="text-sm font-bold">
-              <Inline text={lines[0].replace(/^#{1,6}\s+/, "")} />
-            </p>
-          );
-        }
-        return (
-          <p key={bi}>
-            {lines.map((l, li) => (
-              <span key={li}>
-                {li > 0 && <br />}
-                <Inline text={l} />
-              </span>
-            ))}
-          </p>
-        );
-      })}
-    </>
-  );
-}
-
-/** Inline markdown: **bold**, `code`. Splits on a marker that cannot appear in the text. */
-function Inline({ text }: { text: string }) {
-  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
-  return (
-    <>
-      {parts.map((p, i) => {
-        if (/^\*\*[^*]+\*\*$/.test(p)) return <strong key={i}>{p.slice(2, -2)}</strong>;
-        if (/^`[^`]+`$/.test(p))
-          return (
-            <code key={i} className="rounded bg-muted px-1 font-mono text-[0.85em]">
-              {p.slice(1, -1)}
-            </code>
-          );
-        return <span key={i}>{p}</span>;
-      })}
-    </>
-  );
-}
-
-function Assistant() {
-  const [msgs, setMsgs] = useState<Msg[]>([]);
-  const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  async function send() {
-    const content = text.trim();
-    if (!content || busy) return;
-    const next: Msg[] = [...msgs, { role: "user", content }];
-    setMsgs(next);
-    setText("");
-    setBusy(true);
-    try {
-      const res = await chatAssistant({ data: { messages: next } });
-      setMsgs([...next, { role: "assistant", content: res.reply }]);
-    } catch (e) {
-      setMsgs([
-        ...next,
-        {
-          role: "assistant",
-          content: `Request failed: ${e instanceof Error ? e.message : String(e)}`,
-        },
-      ]);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Sheet>
-      <SheetTrigger asChild>
-        <Button size="sm">
-          <Bot className="mr-1 h-3.5 w-3.5" />
-          Ask AI
-        </Button>
-      </SheetTrigger>
-      <SheetContent className="flex w-full flex-col sm:max-w-md">
-        <SheetHeader>
-          <SheetTitle>Supply chain assistant</SheetTitle>
-        </SheetHeader>
-        <div className="flex-1 space-y-3 overflow-y-auto py-3">
-          {msgs.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              Try: “Which plant has the lowest realisation?” or “Forecast Q4 revenue.”
-            </p>
-          )}
-          {msgs.map((m, i) => (
-            <div
-              key={i}
-              className={cn(
-                "rounded-xl px-3 py-2 text-sm [&_p]:whitespace-pre-wrap",
-                m.role === "user" ? "ml-8 bg-primary text-primary-foreground" : "mr-8 bg-muted",
-              )}
-            >
-              {m.role === "user" ? <p className="whitespace-pre-wrap">{m.content}</p> : <RichText content={m.content} />}
-            </div>
-          ))}
-          {busy && <p className="text-xs text-muted-foreground">Analysing…</p>}
-        </div>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void send();
-          }}
-          className="flex gap-2"
-        >
-          <Input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Ask about revenue, plants, distributors…"
-          />
-          <Button type="submit" size="icon" disabled={busy}>
-            <Send className="h-4 w-4" />
-          </Button>
-        </form>
-      </SheetContent>
-    </Sheet>
   );
 }
